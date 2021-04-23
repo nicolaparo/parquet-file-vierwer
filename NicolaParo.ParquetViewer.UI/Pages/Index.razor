@@ -1,0 +1,144 @@
+﻿@page "/"
+@using System.IO
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h3>Upload Parquet File</h3>
+        <InputFile OnChange="@LoadFilesAsync" />
+
+        @if (ParquetFile is null)
+        {
+            <button type="button" class="btn btn-primary" disabled>
+                Choose Parquet File
+            </button>
+        }
+        else if (IsLoadingParquet)
+        {
+            <button type="button" class="btn btn-primary" disabled>
+                Please Wait...
+            </button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-primary" @onclick="ParseParquet">
+                Load
+            </button>
+        }
+    </div>
+</div>
+
+@if (Reader is not null)
+{
+    @if (Reader.CustomMetadata is not null && Reader.CustomMetadata.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-body">
+                <h3>Custom Metadata</h3>
+
+                <table>
+                    @foreach (var (key, value) in Reader.CustomMetadata)
+                    {
+                        <tr>
+                            <td><strong>@key</strong></td>
+                            <td>@value</td>
+                        </tr>
+                    }
+                </table>
+
+            </div>
+        </div>
+    }
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h3>Fields</h3>
+
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Schema Type</th>
+                        <th>Path</th>
+                        <th>Max Definition Level</th>
+                        <th>Max Repetition Level</th>
+                    </tr>
+                    @foreach (var field in Reader.Schema.Fields)
+                    {
+                        <tr>
+                            <td>@field.Name</td>
+                            <td>@field.SchemaType</td>
+                            <td>@field.Path</td>
+                            <td>@field.MaxDefinitionLevel</td>
+                            <td>@field.MaxRepetitionLevel</td>
+                        </tr>
+                    }
+                </thead>
+            </table>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h3>Parquet File Data</h3>
+
+            <table class="table">
+                <thead>
+                    <tr>
+                        @foreach (var field in Reader.Schema.Fields)
+                        {
+                            <th>@field.Name</th>
+                        }
+                    </tr>
+                    @for (var groupIndex = 0; groupIndex < Reader.RowGroupCount; groupIndex++)
+                    {
+                        var group = Reader.OpenRowGroupReader(groupIndex);
+
+                        <tr>
+                            <td colspan="@(Reader.Schema.Fields.Count + 1)">Group @groupIndex</td>
+                        </tr>
+
+                        @for (var i = 0; i < group.RowCount; i++)
+                        {
+                            <tr>
+                                @foreach (var column in Reader.ReadEntireRowGroup(groupIndex))
+                                {
+                                    <td>@(column.Data.Cast<object>().ElementAtOrDefault(i))</td>
+                                }
+                            </tr>
+                        }
+
+
+                    }
+                </thead>
+            </table>
+        </div>
+    </div>
+}
+
+
+
+@code {
+
+    private byte[] ParquetFile { get; set; }
+    private bool IsLoadingParquet { get; set; }
+
+    private ParquetReader Reader { get; set; }
+
+    private async Task LoadFilesAsync(InputFileChangeEventArgs e)
+    {
+        IsLoadingParquet = true;
+        using var memoryStream = new MemoryStream();
+        await e.File.OpenReadStream().CopyToAsync(memoryStream);
+        ParquetFile = memoryStream.ToArray();
+        IsLoadingParquet = false;
+    }
+
+    private void ParseParquet()
+    {
+        if (ParquetFile is null)
+            return;
+
+        Reader = new ParquetReader(new MemoryStream(ParquetFile));
+    }
+
+}
